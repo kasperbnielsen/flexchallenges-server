@@ -11,27 +11,20 @@ masteryRouter.get("/puuids", (req, res) => {
 });
 
 const APIKEY = process.env.API_KEY;
-console.log(APIKEY);
 if (!APIKEY) throw new Error("API-KEY Missing!");
 const REDISHOST = process.env.REDIS_HOST;
 if (!REDISHOST) throw new Error("REDISHOST Missing!");
-//const MONGODBHOST = process.env.MONGODB_HOST;
+const MONGODBHOST = process.env.MONGODB_HOST;
+if (!MONGODBHOST) throw new Error("MONGODBHOST Mssing!");
 
-//const databaseClient = new MongoClient(MONGODBHOST);
+const databaseClient = new MongoClient(MONGODBHOST);
 const client = new Redis(REDISHOST);
-//const connection = databaseClient.connect().then((c) => c.db("flexchallenges"));
+const connection = databaseClient.connect().then((c) => c.db("production"));
 
 type Mastery = Array<{
   championId: number;
-  championLevel: number;
   championPoints: number;
-  championPointsSinceLastLevel: number;
-  championPointsUntilNextLevel: number;
-  chestGranted: boolean;
-  lastPlayTime: number;
   puuid: string;
-  summonerId: string;
-  tokensEarned: number;
 }>;
 
 function getChampions(region: string[]) {
@@ -62,6 +55,7 @@ function getEasyChampions(region: string[]) {
       }
     }
   }
+
   while (champList.size < 5) {
     champList.add(region[Math.floor(Math.random() * region[0].length)]);
   }
@@ -127,7 +121,7 @@ function getHighest(points: number[][]) {
   return index;
 }
 
-async function getMastery(puuid: string, apiKey: string) {
+async function getMastery(puuid: string, apiKey: string): Promise<Mastery> {
   const url = `https://euw1.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/${puuid}?api_key=${apiKey}`;
   return await fetch(url, { method: "GET" })
     .then((res) => {
@@ -139,17 +133,9 @@ async function getMastery(puuid: string, apiKey: string) {
     });
 }
 
-async function getUpstash() {
-  const url = "https://upstash.kasperboegvad.workers.dev";
-  return await fetch(url, { method: "GET", headers: {} }).then((response) => {
-    console.log("data  ", response);
-    return response;
-  });
-}
-
 async function getId(username: string, apiKey: string, region: string) {
   const url = `https://euw1.api.riotgames.com/lol/summoner/v4/summoners/by-name/${username}?api_key=${apiKey}`;
-  /* const collection = (await connection).collection<{
+  const collection = (await connection).collection<{
     username: string;
     puuid: string;
     region: string;
@@ -157,7 +143,7 @@ async function getId(username: string, apiKey: string, region: string) {
   const user = await collection.findOne({ username, region });
   if (user) {
     return user;
-  } */
+  }
   const data = await fetch(url, { method: "GET" }).then((response) => {
     console.log("fetch id");
     return response.json();
@@ -166,18 +152,27 @@ async function getId(username: string, apiKey: string, region: string) {
     throw new Error("Ratelimit reached");
   }
 
-  /* return collection.findOneAndUpdate(
-    { username, region },
-    {
-      $set: {
-        ...data,
-        username,
-        region,
+  return (
+    (await collection.findOneAndUpdate(
+      { puuid: data.puuid },
+      {
+        $set: {
+          username,
+          region,
+          name: data.name,
+          profileIconId: data.profileIconId,
+          revisionDate: data.revisionDate,
+          summonerLevel: data.summonerLevel,
+        },
+        $setOnInsert: {
+          accountId: data.accountId,
+          summonerId: data.id,
+          puuid: data.puuid,
+        },
       },
-    },
-    { upsert: true, returnDocument: "after" }
-  ); */
-  return data;
+      { upsert: true, returnDocument: "after" }
+    )) || data
+  );
 }
 
 masteryRouter.get("/:nameslist", async (req, res) => {
@@ -185,8 +180,6 @@ masteryRouter.get("/:nameslist", async (req, res) => {
     res.status(400).send();
     return;
   }
-
-  getUpstash();
 
   const names: {
     list: string[];
@@ -222,22 +215,50 @@ masteryRouter.get("/:nameslist", async (req, res) => {
 
   const masteryPoints: Array<Array<number>> = [];
 
-  const hash = new Map<string, string>();
-
   for (const name of names.list) {
     const id = await getId(name, APIKEY, names.serverRegion);
     if (id === "") {
       res.status(429).send();
       return;
     }
-    const mastery = await getMastery(id?.puuid, APIKEY);
 
-    for (let i = 0; i < mastery.length; i++) {
-      hash.set(mastery[i].championId, mastery[i].championPoints.toString());
+    const entries = await client.hgetall(`${id?.puuid}`);
+    let mastery: Mastery = [];
+
+    if (Object.keys(entries).length) {
+      let objKeys = Object.keys(entries);
+      let objValues = Object.values(entries);
+      for (let i = 0; i < objKeys.length; i++) {
+        mastery[i] = {
+          championId: +objKeys[i],
+          championPoints: +objValues[i],
+          puuid: id.puuid,
+        };
+      }
+      const playerMastery = getPlayerMastery(mastery, keys);
+      console.log("player : ", playerMastery);
+      masteryPoints.push(playerMastery);
+      continue;
     }
-    //await client.set(name, hash);
+
+    mastery = await getMastery(id?.puuid, APIKEY);
+
+    let map: Record<string, number> = {};
+    for (let i = 0; i < mastery.length; i++) {
+      map[mastery[i].championId] = mastery[i].championPoints;
+    }
+
+    try {
+      await client.hmset(id?.puuid, map).then(() => {
+        client.expire(name, 36000);
+      });
+    } catch (err) {
+      console.error(err);
+    }
+
     const playerMastery = getPlayerMastery(mastery, keys);
     masteryPoints.push(playerMastery);
+    continue;
   }
   console.log(masteryPoints);
 
