@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Redis } from "ioredis";
+//import { Redis } from "ioredis";
 import { MongoClient } from "mongodb";
 import champions from "../assets/champions";
 
@@ -18,12 +18,13 @@ const MONGODBHOST = process.env.MONGODB_HOST;
 if (!MONGODBHOST) throw new Error("MONGODBHOST Mssing!");
 
 const databaseClient = new MongoClient(MONGODBHOST);
-const client = new Redis(REDISHOST);
+//const client = new Redis(REDISHOST);
 const connection = databaseClient.connect().then((c) => c.db("production"));
 
-type Mastery = Array<{
+type Masteries = Array<{
   championId: number;
   championPoints: number;
+  championLevel: number;
   puuid: string;
 }>;
 
@@ -64,19 +65,19 @@ function getEasyChampions(region: string[]) {
   return Array.from(champList);
 }
 
-function getPlayerMastery(champs: Mastery, champList: string[]) {
+function getPlayerMastery(champs: Masteries, champList: string[]) {
   const playerMasteries: number[] = [1, 1, 1, 1, 1];
+  const playerLevels: number[] = [];
   for (let i = 0; i < champList.length; i++) {
     for (let j = 0; j < champs.length; j++) {
       if (champs[j].championId.toString() === champList[i]) {
         playerMasteries[i] = champs[j].championPoints;
+        playerLevels[i] = champs[j].championLevel;
       }
     }
   }
-  return playerMasteries;
+  return { playerMasteries, playerLevels };
 }
-
-let random: number;
 
 function getKeys(championList: string[]) {
   const keyList: string[] = [];
@@ -121,16 +122,51 @@ function getHighest(points: number[][]) {
   return index;
 }
 
-async function getMastery(puuid: string, apiKey: string): Promise<Mastery> {
+async function getMastery(puuid: string, apiKey: string): Promise<Masteries> {
   const url = `https://euw1.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/${puuid}?api_key=${apiKey}`;
-  return await fetch(url, { method: "GET" })
+  const collection = (await connection).collection<{
+    createdAt: Date;
+    masteries: Masteries;
+    puuid: string;
+  }>("mastery");
+  const mastery = await collection.findOne({ puuid });
+  if (mastery) return mastery.masteries;
+  const data = await fetch(url, { method: "GET" })
     .then((res) => {
       console.log("fetch mastery");
-      return res.json();
+      if (res.status === 200) return res.json();
+      return null;
     })
     .catch((err) => {
       console.log(err);
+      return null;
     });
+  if (!data) console.log("data is null");
+  //await collection.createIndex({ createdAt: 1 }, { expireAfterSeconds: 3600 });
+  await collection
+    .updateOne(
+      { puuid },
+      {
+        $set: {
+          masteries: data,
+        },
+        $setOnInsert: {
+          createdAt: new Date(),
+          puuid,
+        },
+      },
+      { upsert: true }
+    )
+    .then(() => {
+      console.log("success:", data);
+      return data;
+    })
+    .catch(() => {
+      console.log("err:", data);
+
+      return data;
+    });
+  return data;
 }
 
 async function getId(username: string, apiKey: string, region: string) {
@@ -214,6 +250,7 @@ masteryRouter.get("/:nameslist", async (req, res) => {
   const keys = getKeys(champs);
 
   const masteryPoints: Array<Array<number>> = [];
+  const masteryLevels: Array<Array<number>> = [];
 
   for (const name of names.list) {
     const id = await getId(name, APIKEY, names.serverRegion);
@@ -222,7 +259,7 @@ masteryRouter.get("/:nameslist", async (req, res) => {
       return;
     }
 
-    const entries = await client.hgetall(`${id?.puuid}`);
+    /* const entries = await client.hgetall(`${id?.puuid}`);
     let mastery: Mastery = [];
 
     if (Object.keys(entries).length) {
@@ -233,31 +270,37 @@ masteryRouter.get("/:nameslist", async (req, res) => {
           championId: +objKeys[i],
           championPoints: +objValues[i],
           puuid: id.puuid,
+          championLevel: 123,
         };
       }
       const playerMastery = getPlayerMastery(mastery, keys);
       console.log("player : ", playerMastery);
       masteryPoints.push(playerMastery);
       continue;
-    }
+    }*/
 
-    mastery = await getMastery(id?.puuid, APIKEY);
+    const mastery = await getMastery(id?.puuid, APIKEY);
 
-    let map: Record<string, number> = {};
+    /*let map: Record<string, number> = {};
     for (let i = 0; i < mastery.length; i++) {
       map[mastery[i].championId] = mastery[i].championPoints;
     }
 
     try {
       await client.hmset(id?.puuid, map).then(() => {
-        client.expire(name, 36000);
+        client.expire(id?.puuid, 36000);
       });
     } catch (err) {
       console.error(err);
-    }
+    }*/
 
+    if (!mastery) {
+      res.status(400).send({ error: "mastery not defined" });
+      return;
+    }
     const playerMastery = getPlayerMastery(mastery, keys);
-    masteryPoints.push(playerMastery);
+    masteryPoints.push(playerMastery.playerMasteries);
+    masteryLevels.push(playerMastery.playerLevels);
     continue;
   }
   console.log(masteryPoints);
@@ -265,6 +308,8 @@ masteryRouter.get("/:nameslist", async (req, res) => {
   const newChampList = [];
   const orderList = [];
   const assignedChamps = [];
+  const assignedPoints = [];
+  const assignedLevels = [];
 
   for (let i = 0; i < 5; i++) {
     const indexOfPlayer = getHighest(masteryPoints);
@@ -275,6 +320,10 @@ masteryRouter.get("/:nameslist", async (req, res) => {
     assignedChamps[indexOfPlayer] = keys[indexOfChampion];
     newChampList[indexOfPlayer] = champs[indexOfChampion];
     orderList[indexOfPlayer] = indexOfChampion;
+    assignedPoints[indexOfPlayer] =
+      masteryPoints[indexOfPlayer][indexOfChampion];
+    assignedLevels[indexOfPlayer] =
+      masteryLevels[indexOfPlayer][indexOfChampion];
 
     masteryPoints[indexOfPlayer] = [0, 0, 0, 0, 0];
 
@@ -282,7 +331,7 @@ masteryRouter.get("/:nameslist", async (req, res) => {
       masteryPoints[j][indexOfChampion] = 0;
     }
   }
-
+  console.log(assignedPoints);
   const myObject2 = {
     players: {
       player1: {
@@ -313,6 +362,8 @@ masteryRouter.get("/:nameslist", async (req, res) => {
     },
     region: names.options[randomRegion],
     order: orderList,
+    pointsList: assignedPoints,
+    levelList: assignedLevels,
   };
 
   res.status(200).send(myObject2);
