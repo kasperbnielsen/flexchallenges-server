@@ -211,6 +211,80 @@ async function getId(username: string, apiKey: string, region: string) {
   );
 }
 
+async function getMatch(matchId: string) {
+  const url = `https://europe.api.riotgames.com/lol/match/v5/matches/${matchId}?api_key=${APIKEY}`;
+
+  const data = await fetch(url, { method: "GET" }).then((response) => {
+    return response.json();
+  });
+
+  return data;
+}
+
+async function getMatchIds(puuid: string) {
+  const url = `https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?type=ranked&start=0&count=100&api_key=${APIKEY}`;
+
+  const data = await fetch(url, { method: "GET" }).then((response) => {
+    return response.json();
+  });
+
+  return data;
+}
+
+async function getProfile(summonerId: string) {
+  const url = `https://euw1.api.riotgames.com/lol/league/v4/entries/by-summoner/${summonerId}?api_key=${APIKEY}`;
+  const data = await fetch(url, { method: "GET" }).then((response) =>
+    response.json()
+  );
+
+  return data;
+}
+
+masteryRouter.get("/profile/:id", async (req, res) => {
+  if (!req.params.id) {
+    res.status(400).send("wrong id");
+    return;
+  }
+
+  const data: {
+    id: string;
+  } = decode(req.params.id);
+
+  const profileData = await getProfile(data.id);
+
+  res.status(200).send({ data: profileData });
+});
+
+masteryRouter.get("/player/:data", async (req, res) => {
+  if (!req.params.data) {
+    res.status(400).send("no data");
+    return;
+  }
+
+  const data: {
+    data: string;
+  } = decode(req.params.data);
+
+  const matchIds = await getMatchIds(data.data);
+  const batchedMatches: Array<Array<string>> = [];
+  for (let i = 0; i < 10; i++) {
+    const tempArr: string[] = [];
+    for (let j = 0; j < 10; j++) {
+      tempArr.push(matchIds[i * 10 + j]);
+    }
+    batchedMatches.push(tempArr);
+  }
+
+  const matchListData = [];
+  for (let i = 0; i < batchedMatches[0].length; i++) {
+    matchListData.push(await getMatch(batchedMatches[0][i]));
+  }
+
+  console.log(matchListData);
+
+  res.status(200).send({ data: matchListData });
+});
+
 masteryRouter.get("/:nameslist", async (req, res) => {
   if (!req.params.nameslist) {
     res.status(400).send();
@@ -251,6 +325,7 @@ masteryRouter.get("/:nameslist", async (req, res) => {
 
   const masteryPoints: Array<Array<number>> = [];
   const masteryLevels: Array<Array<number>> = [];
+  const puuids = [];
 
   for (const name of names.list) {
     const id = await getId(name, APIKEY, names.serverRegion);
@@ -279,6 +354,7 @@ masteryRouter.get("/:nameslist", async (req, res) => {
       continue;
     }*/
 
+    puuids.push(id?.puuid);
     const mastery = await getMastery(id?.puuid, APIKEY);
 
     /*let map: Record<string, number> = {};
@@ -338,26 +414,31 @@ masteryRouter.get("/:nameslist", async (req, res) => {
         name: names.list[0],
         assignedChamp: assignedChamps[0],
         key: newChampList[0],
+        puuid: puuids[0],
       },
       player2: {
         name: names.list[1],
         assignedChamp: assignedChamps[1],
         key: newChampList[1],
+        puuid: puuids[1],
       },
       player3: {
         name: names.list[2],
         assignedChamp: assignedChamps[2],
         key: newChampList[2],
+        puuid: puuids[2],
       },
       player4: {
         name: names.list[3],
         assignedChamp: assignedChamps[3],
         key: newChampList[3],
+        puuid: puuids[3],
       },
       player5: {
         name: names.list[4],
         assignedChamp: assignedChamps[4],
         key: newChampList[4],
+        puuid: puuids[4],
       },
     },
     region: names.options[randomRegion],
