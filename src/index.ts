@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { cors } from "./middleware/cors";
 import masteryRouter from "./routes/mastery";
+import matchesRouter from "./routes/matches";
 
 const app = express();
 
@@ -14,6 +15,8 @@ app.get("/", (req, res) => {
 });
 
 app.use("/riot", masteryRouter);
+
+app.use("/api", matchesRouter);
 
 app.listen(process.env.PORT ?? 5000, () => {
   console.log("listening on port", process.env.PORT ?? 5000);

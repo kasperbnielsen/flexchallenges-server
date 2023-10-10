@@ -18,7 +18,6 @@ const MONGODBHOST = process.env.MONGODB_HOST;
 if (!MONGODBHOST) throw new Error("MONGODBHOST Mssing!");
 
 const databaseClient = new MongoClient(MONGODBHOST);
-//const client = new Redis(REDISHOST);
 const connection = databaseClient.connect().then((c) => c.db("production"));
 
 type Masteries = Array<{
@@ -213,10 +212,14 @@ async function getId(username: string, apiKey: string, region: string) {
 
 async function getMatch(matchId: string) {
   const url = `https://europe.api.riotgames.com/lol/match/v5/matches/${matchId}?api_key=${APIKEY}`;
-
   const data = await fetch(url, { method: "GET" }).then((response) => {
+    console.log(response.headers.get("x-app-rate-limit-count"));
     return response.json();
   });
+  if (data?.status?.status_code === 429) {
+    console.log("error here");
+    throw new Error("Ratelimit reached");
+  }
 
   return data;
 }
@@ -227,6 +230,9 @@ async function getMatchIds(puuid: string) {
   const data = await fetch(url, { method: "GET" }).then((response) => {
     return response.json();
   });
+  if (data?.status?.status_code === 429) {
+    throw new Error("Ratelimit reached");
+  }
 
   return data;
 }
@@ -236,6 +242,9 @@ async function getProfile(summonerId: string) {
   const data = await fetch(url, { method: "GET" }).then((response) =>
     response.json()
   );
+  if (data?.status?.status_code === 429) {
+    throw new Error("Ratelimit reached");
+  }
 
   return data;
 }
@@ -251,7 +260,6 @@ masteryRouter.get("/profile/:id", async (req, res) => {
   } = decode(req.params.id);
 
   const profileData = await getProfile(data.id);
-
   res.status(200).send({ data: profileData });
 });
 
@@ -266,6 +274,10 @@ masteryRouter.get("/player/:data", async (req, res) => {
   } = decode(req.params.data);
 
   const matchIds = await getMatchIds(data.data);
+  if (matchIds === "") {
+    res.status(429).send();
+    return;
+  }
   const batchedMatches: Array<Array<string>> = [];
   for (let i = 0; i < 10; i++) {
     const tempArr: string[] = [];
@@ -274,15 +286,25 @@ masteryRouter.get("/player/:data", async (req, res) => {
     }
     batchedMatches.push(tempArr);
   }
-
+  const matchColl = (await connection).collection("matches");
   const matchListData = [];
+  const matchesData = [];
   for (let i = 0; i < batchedMatches[0].length; i++) {
-    matchListData.push(await getMatch(batchedMatches[0][i]));
+    const doc = await matchColl.findOne({
+      "metadata.matchId": batchedMatches[0][i],
+    });
+    let match;
+    if (doc) match = doc;
+    else match = await getMatch(batchedMatches[0][i]);
+    matchesData.push(match);
+    if (!doc) matchListData.push(match);
   }
+  if (matchListData.length !== 0)
+    matchColl
+      .insertMany(matchListData, { ordered: false })
+      .catch((err) => console.error(err));
 
-  console.log(matchListData);
-
-  res.status(200).send({ data: matchListData });
+  res.status(200).send({ data: matchesData });
 });
 
 masteryRouter.get("/:nameslist", async (req, res) => {
@@ -334,41 +356,8 @@ masteryRouter.get("/:nameslist", async (req, res) => {
       return;
     }
 
-    /* const entries = await client.hgetall(`${id?.puuid}`);
-    let mastery: Mastery = [];
-
-    if (Object.keys(entries).length) {
-      let objKeys = Object.keys(entries);
-      let objValues = Object.values(entries);
-      for (let i = 0; i < objKeys.length; i++) {
-        mastery[i] = {
-          championId: +objKeys[i],
-          championPoints: +objValues[i],
-          puuid: id.puuid,
-          championLevel: 123,
-        };
-      }
-      const playerMastery = getPlayerMastery(mastery, keys);
-      console.log("player : ", playerMastery);
-      masteryPoints.push(playerMastery);
-      continue;
-    }*/
-
     puuids.push(id?.puuid);
     const mastery = await getMastery(id?.puuid, APIKEY);
-
-    /*let map: Record<string, number> = {};
-    for (let i = 0; i < mastery.length; i++) {
-      map[mastery[i].championId] = mastery[i].championPoints;
-    }
-
-    try {
-      await client.hmset(id?.puuid, map).then(() => {
-        client.expire(id?.puuid, 36000);
-      });
-    } catch (err) {
-      console.error(err);
-    }*/
 
     if (!mastery) {
       res.status(400).send({ error: "mastery not defined" });
