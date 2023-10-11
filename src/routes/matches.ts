@@ -58,6 +58,9 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
         },
       },
     },
+    {
+      $sort: { totalMatches: -1, totalWins: -1, _id: 1 },
+    },
   ];
 
   const document = await coll
