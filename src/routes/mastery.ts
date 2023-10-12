@@ -177,12 +177,17 @@ async function getId(username: string, apiKey: string, region: string) {
   }>("puuid");
   const user = await collection.findOne({ username, region });
   if (user) {
+    console.log("user : ", user);
     return user;
   }
-  const data = await fetch(url, { method: "GET" }).then((response) => {
-    console.log("fetch id");
-    return response.json();
-  });
+  const data = await fetch(url, { method: "GET" })
+    .then((response) => {
+      console.log("fetch id");
+      return response.json();
+    })
+    .catch((err) => {
+      console.error(err);
+    });
   if (data?.status?.status_code === 429) {
     throw new Error("Ratelimit reached");
   }
@@ -212,10 +217,14 @@ async function getId(username: string, apiKey: string, region: string) {
 
 async function getMatch(matchId: string) {
   const url = `https://europe.api.riotgames.com/lol/match/v5/matches/${matchId}?api_key=${APIKEY}`;
-  const data = await fetch(url, { method: "GET" }).then((response) => {
-    console.log(response.headers.get("x-app-rate-limit-count"));
-    return response.json();
-  });
+  const data = await fetch(url, { method: "GET" })
+    .then((response) => {
+      console.log(response.headers.get("x-app-rate-limit-count"));
+      return response.json();
+    })
+    .catch((err) => {
+      console.error(err);
+    });
   if (data?.status?.status_code === 429) {
     console.log("error here");
     throw new Error("Ratelimit reached");
@@ -227,9 +236,13 @@ async function getMatch(matchId: string) {
 async function getMatchIds(puuid: string) {
   const url = `https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?type=ranked&start=0&count=100&api_key=${APIKEY}`;
 
-  const data = await fetch(url, { method: "GET" }).then((response) => {
-    return response.json();
-  });
+  const data = await fetch(url, { method: "GET" })
+    .then((response) => {
+      return response.json();
+    })
+    .catch((err) => {
+      console.error(err);
+    });
   if (data?.status?.status_code === 429) {
     throw new Error("Ratelimit reached");
   }
@@ -239,9 +252,11 @@ async function getMatchIds(puuid: string) {
 
 async function getProfile(summonerId: string) {
   const url = `https://euw1.api.riotgames.com/lol/league/v4/entries/by-summoner/${summonerId}?api_key=${APIKEY}`;
-  const data = await fetch(url, { method: "GET" }).then((response) =>
-    response.json()
-  );
+  const data = await fetch(url, { method: "GET" })
+    .then((response) => response.json())
+    .catch((err) => {
+      console.error(err);
+    });
   if (data?.status?.status_code === 429) {
     throw new Error("Ratelimit reached");
   }
@@ -305,6 +320,12 @@ masteryRouter.get("/player/:data", async (req, res) => {
       .catch((err) => console.error(err));
 
   res.status(200).send({ data: matchesData });
+});
+
+masteryRouter.get("/id/:region/:username", async (req, res) => {
+  const puuid = await getId(req.params.username, APIKEY, req.params.region);
+
+  res.status(200).send(puuid);
 });
 
 masteryRouter.get("/:nameslist", async (req, res) => {
