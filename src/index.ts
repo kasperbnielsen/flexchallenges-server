@@ -3,6 +3,7 @@ import express from "express";
 import { cors } from "./middleware/cors";
 import masteryRouter from "./routes/mastery";
 import matchesRouter from "./routes/matches";
+import leaguesRouter from "./routes/leagues";
 
 const app = express();
 
@@ -17,6 +18,8 @@ app.get("/", (req, res) => {
 app.use("/riot", masteryRouter);
 
 app.use("/api", matchesRouter);
+
+app.use("/leagues", leaguesRouter);
 
 app.listen(process.env.PORT ?? 5000, () => {
   console.log("listening on port", process.env.PORT ?? 5000);
