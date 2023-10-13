@@ -9,3 +9,5 @@ leagueRouter.get("/:region", async (req, res) => {
 
   res.status(200).send(data);
 });
+
+export default leagueRouter;
