@@ -287,7 +287,7 @@ masteryRouter.get("/player/:data", async (req, res) => {
     return;
   }
   const batchedMatches: Array<Array<string>> = [];
-  for (let i = 0; i < data.limit; i++) {
+  for (let i = 0; i < 10; i++) {
     const tempArr: string[] = [];
     for (let j = 0; j < 10; j++) {
       tempArr.push(matchIds[i * 10 + j]);
@@ -297,16 +297,19 @@ masteryRouter.get("/player/:data", async (req, res) => {
   const matchColl = (await connection).collection("matches");
   const matchListData = [];
   const matchesData = [];
-  for (let i = 0; i < batchedMatches[0].length; i++) {
-    const doc = await matchColl.findOne({
-      "metadata.matchId": batchedMatches[0][i],
-    });
-    let match;
-    if (doc) match = doc;
-    else match = await getMatch(batchedMatches[0][i]);
-    matchesData.push(match);
-    if (!doc) matchListData.push(match);
+  for (let j = 0; j < data.limit; j++) {
+    for (let i = 0; i < batchedMatches[j].length; i++) {
+      const doc = await matchColl.findOne({
+        "metadata.matchId": batchedMatches[j][i],
+      });
+      let match;
+      if (doc) match = doc;
+      else match = await getMatch(batchedMatches[j][i]);
+      matchesData.push(match);
+      if (!doc) matchListData.push(match);
+    }
   }
+
   if (matchListData.length !== 0)
     matchColl.insertMany(matchListData, { ordered: false }).catch((err) => console.error(err));
 
