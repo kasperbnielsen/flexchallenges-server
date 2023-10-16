@@ -39,13 +39,7 @@ function getChampions(region: string[]) {
 
 function getEasyChampions(region: string[]) {
   const champList = new Set<string>();
-  const roles = [
-    champions.bot,
-    champions.support,
-    champions.jungler,
-    champions.mid,
-    champions.top,
-  ];
+  const roles = [champions.bot, champions.support, champions.jungler, champions.mid, champions.top];
   for (let j = 0; j < 5; j++) {
     const shuffledArray = Object.keys(region).sort(() => 0.5 - Math.random());
     for (let k = 0; k < region.length; k++) {
@@ -82,9 +76,7 @@ function getKeys(championList: string[]) {
   const keyList: string[] = [];
   championList.forEach((element) => {
     if (champions.champions.hasOwnProperty(element)) {
-      keyList.push(
-        champions.champions[element as keyof typeof champions.champions]
-      );
+      keyList.push(champions.champions[element as keyof typeof champions.champions]);
     }
   });
   return keyList;
@@ -154,7 +146,7 @@ async function getMastery(puuid: string, apiKey: string): Promise<Masteries> {
           puuid,
         },
       },
-      { upsert: true }
+      { upsert: true },
     )
     .then(() => {
       console.log("success:", data);
@@ -210,7 +202,7 @@ async function getId(username: string, apiKey: string, region: string) {
           puuid: data.puuid,
         },
       },
-      { upsert: true, returnDocument: "after" }
+      { upsert: true, returnDocument: "after" },
     )) || data
   );
 }
@@ -286,6 +278,7 @@ masteryRouter.get("/player/:data", async (req, res) => {
 
   const data: {
     data: string;
+    limit: number;
   } = decode(req.params.data);
 
   const matchIds = await getMatchIds(data.data);
@@ -294,7 +287,7 @@ masteryRouter.get("/player/:data", async (req, res) => {
     return;
   }
   const batchedMatches: Array<Array<string>> = [];
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < data.limit; i++) {
     const tempArr: string[] = [];
     for (let j = 0; j < 10; j++) {
       tempArr.push(matchIds[i * 10 + j]);
@@ -315,9 +308,7 @@ masteryRouter.get("/player/:data", async (req, res) => {
     if (!doc) matchListData.push(match);
   }
   if (matchListData.length !== 0)
-    matchColl
-      .insertMany(matchListData, { ordered: false })
-      .catch((err) => console.error(err));
+    matchColl.insertMany(matchListData, { ordered: false }).catch((err) => console.error(err));
 
   res.status(200).send({ data: matchesData });
 });
@@ -349,9 +340,7 @@ masteryRouter.get("/:nameslist", async (req, res) => {
   const randomRegion = Math.floor(Math.random() * names.options.length);
 
   if (names.options.length === 0) {
-    region = names.isRegions
-      ? champions.regionsList[randomRegion]
-      : champions.teamCompsList[randomRegion];
+    region = names.isRegions ? champions.regionsList[randomRegion] : champions.teamCompsList[randomRegion];
   } else {
     region = names.isRegions
       ? // @ts-expect-error element implicitly has an 'any' type
@@ -360,9 +349,7 @@ masteryRouter.get("/:nameslist", async (req, res) => {
         champions.teamComps[names.options[randomRegion]];
   }
 
-  const champs = names.easyMode
-    ? getEasyChampions(region)
-    : getChampions(region);
+  const champs = names.easyMode ? getEasyChampions(region) : getChampions(region);
 
   const keys = getKeys(champs);
 
@@ -400,16 +387,14 @@ masteryRouter.get("/:nameslist", async (req, res) => {
   for (let i = 0; i < 5; i++) {
     const indexOfPlayer = getHighest(masteryPoints);
     const indexOfChampion = masteryPoints[indexOfPlayer].findIndex(
-      (element) => element === getMax(masteryPoints[indexOfPlayer])
+      (element) => element === getMax(masteryPoints[indexOfPlayer]),
     );
 
     assignedChamps[indexOfPlayer] = keys[indexOfChampion];
     newChampList[indexOfPlayer] = champs[indexOfChampion];
     orderList[indexOfPlayer] = indexOfChampion;
-    assignedPoints[indexOfPlayer] =
-      masteryPoints[indexOfPlayer][indexOfChampion];
-    assignedLevels[indexOfPlayer] =
-      masteryLevels[indexOfPlayer][indexOfChampion];
+    assignedPoints[indexOfPlayer] = masteryPoints[indexOfPlayer][indexOfChampion];
+    assignedLevels[indexOfPlayer] = masteryLevels[indexOfPlayer][indexOfChampion];
 
     masteryPoints[indexOfPlayer] = [0, 0, 0, 0, 0];
 
