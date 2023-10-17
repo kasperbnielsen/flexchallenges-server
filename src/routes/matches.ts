@@ -13,9 +13,7 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
   const coll = await connection;
 
   if (!req.query.refresh) {
-    const id = await coll
-      .collection("matchCache")
-      .findOne({ puuid: req.params.puuid });
+    const id = await coll.collection("matchCache").findOne({ puuid: req.params.puuid });
     if (id?.stats?.length) {
       res.status(200).send(id.stats);
       return;
@@ -56,6 +54,24 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
             $cond: ["$info.participants.win", 1, 0],
           },
         },
+        totalCreeps: {
+          $sum:
+            "$info.participants.challenges.alliedJungleMonsterKills" +
+            "$info.participants.challenges.enemyJungleMonsterKills" +
+            "$info.participants.totalMinionsKilled",
+        },
+        totalGold: {
+          $sum: "$info.participants.goldEarned",
+        },
+        totalDamageDealt: {
+          $sum: "$info.participants.totalDamageDealtToChampions",
+        },
+        totalDamageTaken: {
+          $sum: "$info.participants.totalDamageTaken",
+        },
+        totalStructureDamage: {
+          $sum: "$info.participants.damageDealtToBuildings",
+        },
       },
     },
     {
@@ -72,6 +88,11 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
       totalAssists: number;
       totalMatches: number;
       totalWins: number;
+      totalCreeps: number;
+      totalGold: number;
+      totalDamageDealt: number;
+      totalDamageTaken: number;
+      totalStructureDamage: number;
     }>(pipeline)
     .toArray();
 
@@ -90,7 +111,7 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
         puuid: req.params.puuid,
       },
     },
-    { upsert: true }
+    { upsert: true },
   );
 });
 
