@@ -55,13 +55,10 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
           },
         },
         totalCreeps: {
-          $sum:
-            "$info.participants.challenges.alliedJungleMonsterKills" +
-            "$info.participants.challenges.enemyJungleMonsterKills" +
-            "$info.participants.totalMinionsKilled",
+          $sum: "$info.participants.challenges.alliedJungleMonsterKills + $info.participants.challenges.enemyJungleMonsterKills + $info.participants.totalMinionsKilled)",
         },
         totalGold: {
-          $sum: "$info.participants.goldEarned",
+          $sum: "$info.participants.goldPerMinute",
         },
         totalDamageDealt: {
           $sum: "$info.participants.totalDamageDealtToChampions",
@@ -71,6 +68,9 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
         },
         totalStructureDamage: {
           $sum: "$info.participants.damageDealtToBuildings",
+        },
+        totalTime: {
+          $sum: "$info.gameDuration",
         },
       },
     },
@@ -93,6 +93,7 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
       totalDamageDealt: number;
       totalDamageTaken: number;
       totalStructureDamage: number;
+      totalTime: number;
     }>(pipeline)
     .toArray();
 
