@@ -55,10 +55,16 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
           },
         },
         totalCreeps: {
-          $sum: "$info.participants.challenges.alliedJungleMonsterKills + $info.participants.challenges.enemyJungleMonsterKills + $info.participants.totalMinionsKilled)",
+          $sum: {
+            $add: [
+              "$info.participants.challenges.alliedJungleMonsterKills",
+              "$info.participants.challenges.enemyJungleMonsterKills",
+              "$info.participants.totalMinionsKilled)",
+            ],
+          },
         },
         totalGold: {
-          $sum: "$info.participants.goldPerMinute",
+          $sum: "$info.participants.challenges.goldPerMinute",
         },
         totalDamageDealt: {
           $sum: "$info.participants.totalDamageDealtToChampions",
