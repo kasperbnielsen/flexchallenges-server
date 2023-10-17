@@ -59,7 +59,7 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
             $add: [
               "$info.participants.challenges.alliedJungleMonsterKills",
               "$info.participants.challenges.enemyJungleMonsterKills",
-              "$info.participants.totalMinionsKilled)",
+              "$info.participants.totalMinionsKilled",
             ],
           },
         },
