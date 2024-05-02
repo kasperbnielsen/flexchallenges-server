@@ -13,7 +13,9 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
   const coll = await connection;
 
   if (!req.query.refresh) {
-    const id = await coll.collection("matchCache").findOne({ puuid: req.params.puuid });
+    const id = await coll
+      .collection("matchCache")
+      .findOne({ puuid: req.params.puuid });
     if (id?.stats?.length) {
       res.status(200).send(id.stats);
       return;
@@ -118,7 +120,7 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
         puuid: req.params.puuid,
       },
     },
-    { upsert: true },
+    { upsert: true }
   );
 });
 

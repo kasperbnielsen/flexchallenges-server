@@ -1,5 +1,4 @@
 import { Router } from "express";
-//import { Redis } from "ioredis";
 import { MongoClient } from "mongodb";
 import champions from "../assets/champions";
 
@@ -12,8 +11,6 @@ masteryRouter.get("/puuids", (req, res) => {
 
 const APIKEY = process.env.API_KEY;
 if (!APIKEY) throw new Error("API-KEY Missing!");
-const REDISHOST = process.env.REDIS_HOST;
-if (!REDISHOST) throw new Error("REDISHOST Missing!");
 const MONGODBHOST = process.env.MONGODB_HOST;
 if (!MONGODBHOST) throw new Error("MONGODBHOST Mssing!");
 
@@ -39,7 +36,13 @@ function getChampions(region: string[]) {
 
 function getEasyChampions(region: string[]) {
   const champList = new Set<string>();
-  const roles = [champions.bot, champions.support, champions.jungler, champions.mid, champions.top];
+  const roles = [
+    champions.bot,
+    champions.support,
+    champions.jungler,
+    champions.mid,
+    champions.top,
+  ];
   for (let j = 0; j < 5; j++) {
     const shuffledArray = Object.keys(region).sort(() => 0.5 - Math.random());
     for (let k = 0; k < region.length; k++) {
@@ -76,7 +79,9 @@ function getKeys(championList: string[]) {
   const keyList: string[] = [];
   championList.forEach((element) => {
     if (champions.champions.hasOwnProperty(element)) {
-      keyList.push(champions.champions[element as keyof typeof champions.champions]);
+      keyList.push(
+        champions.champions[element as keyof typeof champions.champions]
+      );
     }
   });
   return keyList;
@@ -146,7 +151,7 @@ async function getMastery(puuid: string, apiKey: string): Promise<Masteries> {
           puuid,
         },
       },
-      { upsert: true },
+      { upsert: true }
     )
     .then(() => {
       console.log("success:", data);
@@ -160,19 +165,32 @@ async function getMastery(puuid: string, apiKey: string): Promise<Masteries> {
   return data;
 }
 
-async function getId(username: string, apiKey: string, region: string) {
-  const url = `https://euw1.api.riotgames.com/lol/summoner/v4/summoners/by-name/${username}?api_key=${apiKey}`;
+async function getId(
+  username: string,
+  apiKey: string,
+  region: string,
+  tag: string
+) {
+  const url = `https://europe.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${username}/${tag}?api_key=${apiKey}`;
+
+  const account = await fetch(url, { method: "GET" }).then((res) => {
+    return res.json();
+  });
+
+  const url2 = `https://euw1.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${account.puuid}?api_key=${apiKey}`;
+
   const collection = (await connection).collection<{
     username: string;
     puuid: string;
     region: string;
+    tag: string;
   }>("puuid");
-  const user = await collection.findOne({ username, region });
+  const user = await collection.findOne({ username, region, tag });
   if (user) {
     console.log("user : ", user);
     return user;
   }
-  const data = await fetch(url, { method: "GET" })
+  const data = await fetch(url2, { method: "GET" })
     .then((response) => {
       console.log("fetch id");
       return response.json();
@@ -190,8 +208,6 @@ async function getId(username: string, apiKey: string, region: string) {
       {
         $set: {
           username,
-          region,
-          name: data.name,
           profileIconId: data.profileIconId,
           revisionDate: data.revisionDate,
           summonerLevel: data.summonerLevel,
@@ -200,9 +216,11 @@ async function getId(username: string, apiKey: string, region: string) {
           accountId: data.accountId,
           summonerId: data.id,
           puuid: data.puuid,
+          tag,
+          region,
         },
       },
-      { upsert: true, returnDocument: "after" },
+      { upsert: true, returnDocument: "after" }
     )) || data
   );
 }
@@ -311,13 +329,20 @@ masteryRouter.get("/player/:data", async (req, res) => {
   }
 
   if (matchListData.length !== 0)
-    matchColl.insertMany(matchListData, { ordered: false }).catch((err) => console.error(err));
+    matchColl
+      .insertMany(matchListData, { ordered: false })
+      .catch((err) => console.error(err));
 
   res.status(200).send({ data: matchesData });
 });
 
-masteryRouter.get("/id/:region/:username", async (req, res) => {
-  const puuid = await getId(req.params.username, APIKEY, req.params.region);
+masteryRouter.get("/id/:region/:username/:tag", async (req, res) => {
+  const puuid = await getId(
+    req.params.username,
+    APIKEY,
+    req.params.region,
+    req.params.tag
+  );
 
   res.status(200).send(puuid);
 });
@@ -334,6 +359,7 @@ masteryRouter.get("/:nameslist", async (req, res) => {
     isRegions: boolean;
     easyMode: boolean;
     serverRegion: string;
+    tag: string;
   } = decode(req.params.nameslist);
   let region: string[];
 
@@ -343,7 +369,9 @@ masteryRouter.get("/:nameslist", async (req, res) => {
   const randomRegion = Math.floor(Math.random() * names.options.length);
 
   if (names.options.length === 0) {
-    region = names.isRegions ? champions.regionsList[randomRegion] : champions.teamCompsList[randomRegion];
+    region = names.isRegions
+      ? champions.regionsList[randomRegion]
+      : champions.teamCompsList[randomRegion];
   } else {
     region = names.isRegions
       ? // @ts-expect-error element implicitly has an 'any' type
@@ -352,7 +380,9 @@ masteryRouter.get("/:nameslist", async (req, res) => {
         champions.teamComps[names.options[randomRegion]];
   }
 
-  const champs = names.easyMode ? getEasyChampions(region) : getChampions(region);
+  const champs = names.easyMode
+    ? getEasyChampions(region)
+    : getChampions(region);
 
   const keys = getKeys(champs);
 
@@ -361,7 +391,7 @@ masteryRouter.get("/:nameslist", async (req, res) => {
   const puuids = [];
 
   for (const name of names.list) {
-    const id = await getId(name, APIKEY, names.serverRegion);
+    const id = await getId(name, APIKEY, names.serverRegion, names.tag);
     if (id === "") {
       res.status(429).send();
       return;
@@ -390,14 +420,16 @@ masteryRouter.get("/:nameslist", async (req, res) => {
   for (let i = 0; i < 5; i++) {
     const indexOfPlayer = getHighest(masteryPoints);
     const indexOfChampion = masteryPoints[indexOfPlayer].findIndex(
-      (element) => element === getMax(masteryPoints[indexOfPlayer]),
+      (element) => element === getMax(masteryPoints[indexOfPlayer])
     );
 
     assignedChamps[indexOfPlayer] = keys[indexOfChampion];
     newChampList[indexOfPlayer] = champs[indexOfChampion];
     orderList[indexOfPlayer] = indexOfChampion;
-    assignedPoints[indexOfPlayer] = masteryPoints[indexOfPlayer][indexOfChampion];
-    assignedLevels[indexOfPlayer] = masteryLevels[indexOfPlayer][indexOfChampion];
+    assignedPoints[indexOfPlayer] =
+      masteryPoints[indexOfPlayer][indexOfChampion];
+    assignedLevels[indexOfPlayer] =
+      masteryLevels[indexOfPlayer][indexOfChampion];
 
     masteryPoints[indexOfPlayer] = [0, 0, 0, 0, 0];
 
