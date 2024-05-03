@@ -38,7 +38,10 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
     },
     {
       $group: {
-        _id: "$info.participants.championId",
+        _id: {
+          championId: "$info.participants.championId",
+          gameMode: "$info.queueId",
+        },
         totalKills: {
           $sum: "$info.participants.kills",
         },
@@ -91,6 +94,7 @@ matchesRouter.get("/championstats/:puuid", async (req, res) => {
     .collection("matches")
     .aggregate<{
       _id: number;
+      gameMode: number;
       totalKills: number;
       totalDeaths: number;
       totalAssists: number;
